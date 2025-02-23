@@ -1,0 +1,19 @@
+loki.source.api "endpoint" {
+    http {
+        listen_address = "0.0.0.0"
+        listen_port = "3100"
+    }
+
+    forward_to = [loki.write.loki_server.receiver]
+}
+
+loki.write "loki_server" {
+    endpoint {
+        url = "http://loki:3100/loki/api/v1/push"
+
+        basic_auth {
+            username = ""
+            password = ""
+        }
+    }
+}

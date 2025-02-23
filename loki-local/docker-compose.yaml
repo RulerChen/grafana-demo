@@ -1,0 +1,79 @@
+name: loki-demo
+
+services:
+  alloy:
+    container_name: alloy
+    image: grafana/alloy:v1.6.1
+    restart: always
+    command: ['run', '--server.http.listen-addr=0.0.0.0:12345', '/etc/alloy/config.alloy']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          '/bin/bash',
+          '-c',
+          "echo -e 'GET /-/ready HTTP/1.1\\nHost: localhost\\nConnection: close\\n\\n' > /dev/tcp/localhost/12345"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy
+    ports:
+      - '12345:12345'
+
+  loki:
+    container_name: loki
+    image: grafana/loki:3.4.2
+    restart: always
+    command: ['--pattern-ingester.enabled=true', '-config.file=/etc/loki/loki.config.yaml']
+    healthcheck:
+      test: wget --quiet --tries=1 --output-document=- http://localhost:3100/ready | grep -q -w ready || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    volumes:
+      - ./config/loki/loki.config.yaml:/etc/loki/loki.config.yaml
+    ports:
+      - '3100:3100'
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:11.5.1
+    restart: always
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-lokiexplore-app
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/api/health']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - '3000:3000'
+
+  server:
+    container_name: server
+    build:
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - '8000:8000'
+    depends_on:
+      alloy:
+        condition: service_healthy
+        restart: true
+
+  request:
+    container_name: request
+    image: curlimages/curl:8.12.1
+    restart: always
+    command: ['/bin/sh', '-c', 'while true; do curl -s http://server:8000; sleep 1; done']
