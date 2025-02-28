@@ -15,6 +15,7 @@ class LoggerService {
         }
       ]
     };
+
     try {
       await axios.post(`http://alloy:3100/loki/api/v1/push`, lokiLogEntry);
       console.log(`[${level.toUpperCase()}] ${message}`);

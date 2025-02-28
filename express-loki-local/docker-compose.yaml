@@ -76,4 +76,24 @@ services:
     container_name: request
     image: curlimages/curl:8.12.1
     restart: always
-    command: ['/bin/sh', '-c', 'while true; do curl -s http://server:8000; sleep 1; done']
+    command: |
+      sh -c 'while true; do
+        method=$$(echo "GET POST PUT DELETE" | tr " " "\n" | shuf -n1)
+        bookId=$$(shuf -i 1-100 -n1)
+        case $$method in
+          GET)
+            ep=$$(echo "/api /api/random /api/book/$$bookId" | tr " " "\n" | shuf -n1)
+            curl -s -X GET http://server:8000$$ep
+            ;;
+          POST)
+            curl -s -X POST -H "Content-Type: application/json" http://server:8000/api/book
+            ;;
+          PUT)
+            curl -s -X PUT -H "Content-Type: application/json" http://server:8000/api/book/$$bookId
+            ;;
+          DELETE)
+            curl -s -X DELETE http://server:8000/api/book/$$bookId
+            ;;
+        esac
+        sleep 1
+      done'

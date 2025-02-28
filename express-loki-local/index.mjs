@@ -4,16 +4,60 @@ import logger from './logger.mjs';
 const app = express();
 
 app.use((req, res, next) => {
-  logger.info({
-    message: `Request received endpoint=${req.url}`,
-    url: req.url,
-    method: req.method
+  res.on('finish', () => {
+    if (res.statusCode >= 400) {
+      logger.error({
+        message: `msg="Received response" method=${req.method} path=${req.url} ip=${req.ip} status=${res.statusCode}`
+      });
+    } else {
+      logger.info({
+        message: `msg="Received response" method=${req.method} path=${req.url} ip=${req.ip} status=${res.statusCode}`
+      });
+    }
   });
   next();
 });
 
-app.get('/', (req, res) => {
+app.get('/api', (req, res) => {
+  if (Math.random() < 0.1) {
+    return res.status(500).send('Internal server error');
+  }
   res.status(200).send('Hello, world!');
+});
+
+app.get('/api/random', (req, res) => {
+  if (Math.random() < 0.1) {
+    return res.status(400).send('Bad request');
+  }
+  res.status(200).send(Math.random().toString());
+});
+
+app.get('/api/book/:bookId', (req, res) => {
+  if (Math.random() < 0.1) {
+    return res.status(404).send('Book not found');
+  }
+  res.status(200).send(`Book ID: ${req.params.bookId}`);
+});
+
+app.post('/api/book', (req, res) => {
+  if (Math.random() < 0.1) {
+    return res.status(500).send('Internal server error');
+  }
+  res.status(201).send('Book created');
+});
+
+app.put('/api/book/:bookId', (req, res) => {
+  if (Math.random() < 0.1) {
+    return res.status(500).send('Internal server error');
+  }
+  res.status(200).send(`Book ID: ${req.params.bookId} updated`);
+});
+
+app.delete('/api/book/:bookId', (req, res) => {
+  if (Math.random() < 0.1) {
+    return res.status(500).send('Internal server error');
+  }
+  res.status(204).send();
 });
 
 app.listen(8000, () => {
