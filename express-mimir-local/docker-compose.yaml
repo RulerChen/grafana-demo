@@ -1,0 +1,138 @@
+name: mimir-demo
+
+services:
+  alloy:
+    container_name: alloy
+    image: grafana/alloy:v1.7.1
+    restart: always
+    command: ['run', '--server.http.listen-addr=0.0.0.0:12345', '/etc/alloy/config.alloy']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          '/bin/bash',
+          '-c',
+          "echo -e 'GET /-/ready HTTP/1.1\\nHost: localhost\\nConnection: close\\n\\n' > /dev/tcp/localhost/12345"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy
+    ports:
+      - '12345:12345'
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+
+  mimir:
+    container_name: mimir
+    image: grafana/mimir:2.15.0
+    restart: always
+    command: ['-ingester.native-histograms-ingestion-enabled=true', '-config.file=/etc/mimir.yaml']
+    ports:
+      - '9009:9009'
+    volumes:
+      - './config/mimir/mimir.yaml:/etc/mimir.yaml'
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:11.5.1
+    restart: always
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/api/health']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - '3000:3000'
+
+  postgres:
+    container_name: postgres
+    image: postgres:16.8
+    restart: always
+    command:
+      [
+        'postgres',
+        '-c',
+        'shared_preload_libraries=pg_stat_statements',
+        '-c',
+        'pg_stat_statements.track=all'
+      ]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - '5432:5432'
+
+  postgres-exporter:
+    container_name: postgres-exporter
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    restart: always
+    environment:
+      DATA_SOURCE_NAME: 'postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable'
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    ports:
+      - '9187:9187'
+
+  server:
+    container_name: server
+    build:
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - '8000:8000'
+    depends_on:
+      alloy:
+        condition: service_healthy
+        restart: true
+      postgres:
+        condition: service_healthy
+        restart: true
+
+  request:
+    container_name: request
+    image: curlimages/curl:8.12.1
+    restart: always
+    command: |
+      sh -c 'while true; do
+        method=$$(echo "GET POST PUT DELETE" | tr " " "\n" | shuf -n1)
+        bookId=$$(shuf -i 1-100 -n1)
+        case $$method in
+          GET)
+            ep=$$(echo "/api/book/$$bookId" | tr " " "\n" | shuf -n1)
+            curl -s -X GET http://server:8000$$ep
+            ;;
+          POST)
+            curl -s -X POST -H "Content-Type: application/json" http://server:8000/api/book -d "{\"title\": \"Book $$bookId\"}"
+            ;;
+          DELETE)
+            curl -s -X DELETE http://server:8000/api/book/$$bookId
+            ;;
+        esac
+        sleep 0.05
+      done'

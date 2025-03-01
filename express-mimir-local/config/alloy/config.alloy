@@ -1,0 +1,92 @@
+prometheus.scrape "infra" {
+    targets = [
+        {"__address__" = "mimir:9009", service = "mimir"},
+        {"__address__" = "grafana:3000", service = "grafana"},
+        {"__address__" = "localhost:12345", service = "alloy"},
+    ]
+
+    scrape_interval = "15s"
+
+    forward_to = [prometheus.remote_write.mimir.receiver]
+
+    job_name = "infra"
+}
+
+prometheus.scrape "server" {
+    targets = [
+        {"__address__" = "server:8000", service = "server"},
+    ]
+
+    scrape_interval = "2s"
+    scrape_timeout = "2s"
+
+    forward_to = [prometheus.remote_write.mimir.receiver]
+
+    job_name = "server"
+}
+
+prometheus.exporter.unix "default" {
+}
+
+// This component scrapes the Unix exporter metrics generated above.
+prometheus.scrape "unix" {
+    targets = prometheus.exporter.unix.default.targets
+
+    forward_to = [prometheus.remote_write.mimir.receiver]
+
+    job_name = "node_exporter"
+}
+
+// // This component scrapes the Postgres exporter metrics.
+// prometheus.exporter.postgres "default" {
+//     data_source_names = ["postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable"]
+//     enabled_collectors = [
+//         "database",                   
+//         "database_wraparound",        
+//         "locks",                      
+//         "long_running_transactions",  
+//         "postmaster",                
+//         "process_idle",               
+//         "replication",               
+//         "replication_slot",           
+//         "stat_activity_autovacuum",   
+//         "stat_bgwriter",              
+//         "stat_database",              
+//         "stat_statements",            
+//         "stat_user_tables",          
+//         "stat_wal_receiver",          
+//         "statio_user_indexes",        
+//         "statio_user_tables",         
+//         "wal",                             
+//     ]    
+// }
+
+// prometheus.scrape "postgres" {
+//     targets = prometheus.exporter.postgres.default.targets
+
+//     forward_to = [prometheus.remote_write.mimir.receiver]
+
+//     job_name = "postgres"
+// }
+
+prometheus.scrape "postgres" {
+    targets = [
+        {"__address__" = "postgres-exporter:9187", service = "postgres"},
+    ]
+
+    forward_to = [prometheus.remote_write.mimir.receiver]
+
+    job_name = "postgres"
+}
+
+
+prometheus.remote_write "mimir" {
+    endpoint {
+        url = "http://mimir:9009/api/v1/push"
+
+        basic_auth {
+            username = ""
+            password = ""
+        }
+    }
+}
