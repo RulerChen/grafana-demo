@@ -3,7 +3,7 @@ name: loki-demo
 services:
   alloy:
     container_name: alloy
-    image: grafana/alloy:v1.6.1
+    image: grafana/alloy:v1.7.1
     restart: always
     command: ['run', '--server.http.listen-addr=0.0.0.0:12345', '/etc/alloy/config.alloy']
     healthcheck:
