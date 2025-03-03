@@ -1,7 +1,18 @@
 import express from 'express';
+import pg from 'pg';
 import logger from './logger.mjs';
 
 const app = express();
+
+app.use(express.json());
+
+const pool = new pg.Pool({
+  host: 'postgres',
+  port: 5432,
+  user: 'postgres',
+  password: 'postgres',
+  database: 'postgres'
+});
 
 app.use((req, res, next) => {
   res.on('finish', () => {
@@ -25,41 +36,69 @@ app.get('/api', (req, res) => {
   res.status(200).send('Hello, world!');
 });
 
-app.get('/api/random', (req, res) => {
-  if (Math.random() < 0.1) {
-    return res.status(400).send('Bad request');
-  }
-  res.status(200).send(Math.random().toString());
-});
-
-app.get('/api/book/:bookId', (req, res) => {
+app.get('/api/book/:bookId', async (req, res) => {
   if (Math.random() < 0.1) {
     return res.status(404).send('Book not found');
   }
-  res.status(200).send(`Book ID: ${req.params.bookId}`);
+
+  try {
+    const result = await pool.query('SELECT id, title FROM books WHERE id = $1', [
+      req.params.bookId
+    ]);
+    if (result.rowCount === 0) {
+      return res.status(404).send('Book not found');
+    }
+    res.status(200).send(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Internal server error');
+  }
 });
 
-app.post('/api/book', (req, res) => {
+app.post('/api/book', async (req, res) => {
   if (Math.random() < 0.1) {
     return res.status(500).send('Internal server error');
   }
-  res.status(201).send('Book created');
+
+  try {
+    const { title } = req.body;
+    if (!title) {
+      return res.status(400).send('Title is required');
+    }
+    await pool.query('INSERT INTO books (title) VALUES ($1)', [title]);
+    res.status(201).send();
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Internal server error');
+  }
 });
 
-app.put('/api/book/:bookId', (req, res) => {
+app.delete('/api/book/:bookId', async (req, res) => {
   if (Math.random() < 0.1) {
     return res.status(500).send('Internal server error');
   }
-  res.status(200).send(`Book ID: ${req.params.bookId} updated`);
-});
 
-app.delete('/api/book/:bookId', (req, res) => {
-  if (Math.random() < 0.1) {
-    return res.status(500).send('Internal server error');
+  try {
+    await pool.query('DELETE FROM books WHERE id = $1', [req.params.bookId]);
+    res.status(204).send();
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Internal server error');
   }
-  res.status(204).send();
 });
 
-app.listen(8000, () => {
+app.listen(8000, async () => {
+  try {
+    await pool.connect();
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS books (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL
+        )
+    `);
+  } catch (error) {
+    console.error(error);
+    process.exit(1);
+  }
   console.log('Server is running on http://localhost:8000');
 });

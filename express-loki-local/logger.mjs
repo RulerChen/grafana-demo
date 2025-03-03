@@ -8,7 +8,7 @@ class LoggerService {
       streams: [
         {
           stream: {
-            level,
+            level: level,
             service_name: 'loki-demo'
           },
           values: [[`${Date.now() * 1000000}`, message, metadata]]

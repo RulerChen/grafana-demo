@@ -7,6 +7,55 @@ loki.source.api "endpoint" {
     forward_to = [loki.write.loki_server.receiver]
 }
 
+local.file_match "pg_local_files" {
+    path_targets = [{"__path__" = "/var/log/*.json"}]
+
+    sync_period = "5s"
+}
+
+loki.source.file "pg_log_scrape" {
+    targets    = local.file_match.pg_local_files.targets
+
+    tail_from_end = true
+
+    forward_to = [loki.process.pg_filter_logs.receiver]
+}
+
+loki.process "pg_filter_logs" {
+    stage.json {
+        expressions = {ts = "timestamp", level = "error_severity", dbname = "dbname"}
+    }
+
+    stage.timestamp {
+        source = "ts"
+        format = "2006-01-02 15:04:05.000 MST"
+    }
+
+    stage.labels {
+        values = {
+            level = "level",
+            dbname = "dbname",
+        }
+    }
+
+    forward_to = [loki.relabel.pg_relabel.receiver]
+}
+
+loki.relabel "pg_relabel" {
+    rule {
+        regex  = "^filename$"
+        action = "labeldrop"
+    }
+
+    rule {
+        target_label = "service_name"
+        replacement  = "postgres"
+        action       = "replace"
+    }
+
+    forward_to = [loki.write.loki_server.receiver]
+}
+
 loki.write "loki_server" {
     endpoint {
         url = "http://loki:3100/loki/api/v1/push"

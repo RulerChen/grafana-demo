@@ -20,6 +20,7 @@ services:
       start_period: 5s
     volumes:
       - ./config/alloy/config.alloy:/etc/alloy/config.alloy
+      - ./data/postgres/logs:/var/log/
     ports:
       - '12345:12345'
 
@@ -60,6 +61,43 @@ services:
     ports:
       - '3000:3000'
 
+  postgres:
+    container_name: postgres
+    image: postgres:16.8
+    restart: always
+    command:
+      [
+        'postgres',
+        '-c',
+        'logging_collector=on',
+        '-c',
+        'log_destination=jsonlog',
+        '-c',
+        'log_directory=/logs',
+        '-c',
+        'log_filename=log-%M.log',
+        '-c',
+        'log_rotation_age=1min',
+        '-c',
+        'log_truncate_on_rotation=on',
+        '-c',
+        'log_statement=all'
+      ]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - ./data/postgres/logs:/logs
+    ports:
+      - '5432:5432'
+
   server:
     container_name: server
     build:
@@ -69,6 +107,9 @@ services:
       - '8000:8000'
     depends_on:
       alloy:
+        condition: service_healthy
+        restart: true
+      postgres:
         condition: service_healthy
         restart: true
 
@@ -82,18 +123,15 @@ services:
         bookId=$$(shuf -i 1-100 -n1)
         case $$method in
           GET)
-            ep=$$(echo "/api /api/random /api/book/$$bookId" | tr " " "\n" | shuf -n1)
+            ep=$$(echo "/api /api/book/$$bookId" | tr " " "\n" | shuf -n1)
             curl -s -X GET http://server:8000$$ep
             ;;
           POST)
-            curl -s -X POST -H "Content-Type: application/json" http://server:8000/api/book
-            ;;
-          PUT)
-            curl -s -X PUT -H "Content-Type: application/json" http://server:8000/api/book/$$bookId
+            curl -s -X POST -H "Content-Type: application/json" http://server:8000/api/book -d "{\"title\": \"Book $$bookId\"}"
             ;;
           DELETE)
             curl -s -X DELETE http://server:8000/api/book/$$bookId
             ;;
         esac
-        sleep 1
+        sleep 0.5
       done'
