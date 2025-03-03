@@ -6,4 +6,5 @@ For details, please visit my website: [Link](https://rulerchen.github.io/RulerCh
 
 Below is some finished examples:
 
-- loki-local
+- [loki-local](./express-loki-local/README.md)
+- [mimir-local](./express-mimir-local/README.md)
