@@ -1,6 +1,6 @@
 # Tempo demo
 
-This repo is a demo of how to use Opentelemetry to trace the application using Tempo between the different services and the database.
+This repo is a demo of how to trace the application using Tempo and Opentelemetry between the different services and the database.
 
 Here is the tech stack:
 
