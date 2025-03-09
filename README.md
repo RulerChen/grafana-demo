@@ -8,3 +8,4 @@ Below is some finished examples:
 
 - [loki-local](./express-loki-local/README.md)
 - [mimir-local](./express-mimir-local/README.md)
+- [tempo-local](./express-tempo-local/README.md)

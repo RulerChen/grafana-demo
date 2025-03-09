@@ -1,0 +1,127 @@
+name: tempo-demo
+
+services:
+  alloy:
+    container_name: alloy
+    image: grafana/alloy:v1.7.1
+    restart: always
+    command: ['run', '--server.http.listen-addr=0.0.0.0:12345', '/etc/alloy/config.alloy']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          '/bin/bash',
+          '-c',
+          "echo -e 'GET /-/ready HTTP/1.1\\nHost: localhost\\nConnection: close\\n\\n' > /dev/tcp/localhost/12345"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy
+    ports:
+      - '12345:12345'
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+
+  tempo:
+    container_name: tempo
+    image: grafana/tempo:2.7.1
+    restart: always
+    command: ['-config.file=/etc/tempo.yaml']
+    ports:
+      - '3200:3200'
+      - '4317:4317'
+    volumes:
+      - ./config/tempo/tempo.yaml:/etc/tempo.yaml
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:11.5.1
+    restart: always
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/api/health']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - '3000:3000'
+
+  postgres:
+    container_name: postgres
+    image: postgres:16.8
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    ports:
+      - '5432:5432'
+
+  server1:
+    container_name: server1
+    build:
+      dockerfile: Dockerfile
+      context: ./server1
+    restart: always
+    ports:
+      - '8000:8000'
+    depends_on:
+      alloy:
+        condition: service_healthy
+        restart: true
+
+  server2:
+    container_name: server2
+    build:
+      dockerfile: Dockerfile
+      context: ./server2
+    restart: always
+    ports:
+      - '8001:8000'
+    depends_on:
+      alloy:
+        condition: service_healthy
+        restart: true
+      postgres:
+        condition: service_healthy
+        restart: true
+
+  request:
+    container_name: request
+    image: curlimages/curl:8.12.1
+    restart: always
+    command: |
+      sh -c 'while true; do
+        method=$$(echo "GET POST PUT DELETE" | tr " " "\n" | shuf -n1)
+        bookId=$$(shuf -i 1-100 -n1)
+        case $$method in
+          GET)
+            curl -s -X GET http://server1:8000/api/book/$$bookId
+            ;;
+          POST)
+            curl -s -X POST -H "Content-Type: application/json" http://server1:8000/api/book -d "{\"title\": \"Book $$bookId\"}"
+            ;;
+          DELETE)
+            curl -s -X DELETE http://server1:8000/api/book/$$bookId
+            ;;
+        esac
+        sleep 30
+      done'
